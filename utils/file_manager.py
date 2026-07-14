@@ -63,10 +63,20 @@ def save_settings(settings):
 
 
 def time_to_sec(time_str):
-    """Converts SRT/VTT timestamp (00:00:01,000 or 00:00:01.000) to seconds."""
+    """Converts SRT/VTT timestamp (00:00:01,000, 00:00:01.000, or 01.000) to seconds."""
+    time_str = time_str.strip().split()[0] # Take first part to ignore VTT metadata like align:start
     time_str = time_str.replace(',', '.') # Normalize SRT commas to VTT periods
-    h, m, s = time_str.split(':')
-    return int(h) * 3600 + int(m) * 60 + float(s)
+    
+    parts = time_str.split(':')
+    if len(parts) == 3:
+        h, m, s = parts
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    elif len(parts) == 2:
+        m, s = parts
+        return int(m) * 60 + float(s)
+    else:
+        return float(time_str)
+
 
 def parse_subtitle_file(file_path):
     """Reads an SRT or VTT file and returns a list of subtitle dictionaries."""
@@ -75,32 +85,42 @@ def parse_subtitle_file(file_path):
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Split the file by double line breaks (which separate subtitle blocks)
-    blocks = content.strip().split('\n\n')
+    # Normalize line endings
+    content = content.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Split the file by double (or more) line breaks
+    blocks = re.split(r'\n{2,}', content.strip())
 
     for block in blocks:
         lines = block.split('\n')
-        # We need at least an index, a timestamp line, and text
-        if len(lines) >= 3: 
-            time_line = lines[1]
-            
-            # Check if this line actually contains the timestamp arrow
-            if "-->" in time_line:
-                start_str, end_str = time_line.split(" --> ")
+        
+        # Find the line with the timestamp arrow
+        time_line_index = -1
+        for i, line in enumerate(lines):
+            if "-->" in line:
+                time_line_index = i
+                break
                 
-                try:
-                    start_sec = time_to_sec(start_str.strip())
-                    end_sec = time_to_sec(end_str.strip())
-                    
-                    # Join all remaining lines as the text (in case it's multi-line)
-                    text = " ".join(lines[2:]).strip()
-                    
-                    parsed_subtitles.append({
-                        "start": start_sec,
-                        "end": end_sec,
-                        "text": text
-                    })
-                except Exception as e:
-                    print(f"Skipping invalid timestamp line: {time_line}")
+        if time_line_index != -1:
+            time_line = lines[time_line_index]
+            start_str, end_str = time_line.split("-->")
+            
+            try:
+                start_sec = time_to_sec(start_str.strip())
+                end_sec = time_to_sec(end_str.strip())
+                
+                # Join all remaining lines after the time_line as the text
+                text = " ".join(lines[time_line_index+1:]).strip()
+                
+                # Strip VTT/HTML tags like <c> or <00:00:08.960>
+                text = re.sub(r'<[^>]+>', '', text).strip()
+                
+                parsed_subtitles.append({
+                    "start": start_sec,
+                    "end": end_sec,
+                    "text": text
+                })
+            except Exception as e:
+                print(f"Skipping invalid timestamp line: {time_line} - Error: {e}")
                     
     return parsed_subtitles

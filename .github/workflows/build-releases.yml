@@ -66,14 +66,14 @@ jobs:
         if: runner.os != 'macOS'
         run: |
           cd dist
-          zip -r ../ScriptCutter-${{ matrix.os }}.zip ScriptCutter
+          python -m zipfile -c ../ScriptCutter-${{ matrix.os }}.zip ScriptCutter
         shell: bash
 
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
           cd dist
-          zip -r ../ScriptCutter-${{ matrix.os }}.zip ScriptCutter.app
+          python -m zipfile -c ../ScriptCutter-${{ matrix.os }}.zip ScriptCutter.app
         shell: bash
 
       - name: Upload to Release

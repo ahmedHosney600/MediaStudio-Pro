@@ -2,7 +2,24 @@ import subprocess
 import wave
 import os
 import struct
-from utils.binary_resolver import get_ffmpeg_path
+from utils.binary_resolver import get_ffmpeg_path, get_ffprobe_path
+
+def has_video_stream(file_path):
+    """
+    Checks if the media file contains a video stream.
+    """
+    cmd = [
+        get_ffprobe_path(), "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_type",
+        "-of", "default=nw=1:nk=1",
+        file_path
+    ]
+    try:
+        out = subprocess.check_output(cmd, text=True).strip()
+        return bool(out)
+    except:
+        return False
 
 def generate_waveform_data(video_path, num_peaks=5000):
     """

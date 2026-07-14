@@ -1,6 +1,7 @@
 import subprocess
 import os
 from utils.binary_resolver import get_ffmpeg_path, get_ffprobe_path
+from core.media_engine import has_video_stream
 
 def get_audio_extension(video_path):
     try:
@@ -41,6 +42,9 @@ def export_clip(video_path, start_time, end_time, output_dir, clip_name, mode, f
         "-i", video_path,           
         "-t", str(duration)         
     ]
+    
+    if format_type == "Video" and not has_video_stream(video_path):
+        format_type = "Audio"
     
     if format_type == "Audio":
         # Extract audio only, use stream copy to preserve original format

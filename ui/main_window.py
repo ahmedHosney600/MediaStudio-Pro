@@ -13,7 +13,7 @@ from ui.settings_modal import SettingsModal
 from utils.file_manager import load_settings, parse_subtitle_file
 from ui.timeline_widget import TimelineWidget
 from core.matcher import find_precise_clip_boundaries
-from core.media_engine import generate_waveform_data
+from core.media_engine import generate_waveform_data, has_video_stream
 from core.exporter import export_clip 
 from ui.downloader_widget import DownloaderWidget
 
@@ -72,7 +72,7 @@ class MainWindow(QMainWindow):
 
         # --- Top Menu / Action Bar ---
         action_bar = QHBoxLayout()
-        self.import_video_btn = QPushButton("🎬 Import Video")
+        self.import_video_btn = QPushButton("🎬 Import Media")
         self.import_video_btn.clicked.connect(self.import_video)
         self.settings_btn = QPushButton("⚙️ Settings")
         self.settings_btn.clicked.connect(self.open_settings)
@@ -455,7 +455,7 @@ class MainWindow(QMainWindow):
         self.setFocus()
 
     def import_video(self):
-        video_path, _ = QFileDialog.getOpenFileName(self, "Select Video File", "", "Video Files (*.mp4 *.mkv *.mov)")
+        video_path, _ = QFileDialog.getOpenFileName(self, "Select Media File", "", "Media Files (*.mp4 *.mkv *.mov *.mp3 *.wav *.m4a *.flac *.webm *.ogg)")
         if not video_path: return
 
         self.current_video_path = video_path
@@ -468,9 +468,9 @@ class MainWindow(QMainWindow):
         self.status_label.setText(f"Loading waveform for: {file_name}...")
         
         display_name = file_name if len(file_name) <= 15 else file_name[:12] + "..."
-        full_status = f"✅ Video: {file_name}"
+        full_status = f"✅ Media: {file_name}"
         
-        self.import_video_btn.setText(f"✅ Video: {display_name}")
+        self.import_video_btn.setText(f"✅ Media: {display_name}")
         self.import_video_btn.setToolTip(full_status)
         self.import_video_btn.setStyleSheet("background-color: #2e7d32; color: white;")
         
@@ -724,6 +724,9 @@ class MainWindow(QMainWindow):
         export_mode = self.app_settings.get("cut_speed", "Fastest (Keyframe Copy)")
         export_format = self.app_settings.get("export_format", "Video")
         
+        if not has_video_stream(self.current_video_path):
+            export_format = "Audio"
+        
         start = self.timeline_view.start_line.value()
         end = self.timeline_view.end_line.value()
         
@@ -736,6 +739,9 @@ class MainWindow(QMainWindow):
         clip_base = self.build_clip_export_name(clip_id, row)
         
         video_ext = os.path.splitext(self.current_video_path)[1].lstrip('.')
+        if not has_video_stream(self.current_video_path):
+            from core.exporter import get_audio_extension
+            video_ext = get_audio_extension(self.current_video_path)
         
         self.status_label.setText(f"Exporting {clip_base}...")
         self.repaint() 
@@ -770,7 +776,11 @@ class MainWindow(QMainWindow):
             return
             
         from PySide6.QtWidgets import QInputDialog
-        formats = ["Video", "Audio", "Both"]
+        if not has_video_stream(self.current_video_path):
+            formats = ["Audio"]
+        else:
+            formats = ["Video", "Audio", "Both"]
+            
         default_fmt = self.app_settings.get("export_format", "Video")
         default_idx = formats.index(default_fmt) if default_fmt in formats else 0
         

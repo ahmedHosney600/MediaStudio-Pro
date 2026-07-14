@@ -90,7 +90,8 @@ class DownloaderWidget(QWidget):
         format_layout = QHBoxLayout()
         format_layout.addWidget(QLabel("Output Format:"))
         self.combo_format = QComboBox()
-        self.combo_format.addItems(["mp4", "mkv", "webm"])
+        # The items will be populated based on the default quality via on_quality_changed
+        self.combo_quality.currentIndexChanged.connect(self.on_quality_changed)
         self.combo_format.currentIndexChanged.connect(self.update_command_preview)
         format_layout.addWidget(self.combo_format)
         video_layout.addLayout(format_layout)
@@ -212,15 +213,12 @@ class DownloaderWidget(QWidget):
         
         q_val = settings.value("combo_quality")
         if q_val:
-            self.combo_quality.setCurrentText(str(q_val))
-            
-        f_val = settings.value("combo_format")
-        if f_val:
-            self.combo_format.setCurrentText(str(f_val))
-            
-        spin_val = settings.value("spin_concurrent")
-        if spin_val is not None:
-            self.spin_concurrent.setValue(int(spin_val))
+            self.combo_quality.setCurrentText(settings.value("combo_quality", "bestvideo[height<=1080]+bestaudio/best[height<=1080] (1080p Best)"))
+        self.on_quality_changed() # Force populate the format dropdown based on the loaded quality
+        
+        self.combo_format.setCurrentText(settings.value("combo_format", "Unspecified"))
+        
+        self.spin_concurrent.setValue(int(settings.value("spin_concurrent", 20)))
             
         self.subs_group.setChecked(get_bool("subs_group", True))
         self.chk_embed_subs.setChecked(get_bool("chk_embed_subs", True))
@@ -317,6 +315,29 @@ class DownloaderWidget(QWidget):
         self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.start("pip", ["install", "-U", "yt-dlp"])
 
+    def on_quality_changed(self):
+        q_text = self.combo_quality.currentText()
+        current_fmt = self.combo_format.currentText()
+        
+        self.combo_format.blockSignals(True)
+        self.combo_format.clear()
+        
+        if "Audio Only" in q_text:
+            self.combo_format.addItems(["Unspecified", "mp3", "m4a", "wav", "flac"])
+            if current_fmt not in ["Unspecified", "mp3", "m4a", "wav", "flac"]:
+                self.combo_format.setCurrentText("Unspecified")
+            else:
+                self.combo_format.setCurrentText(current_fmt)
+        else:
+            self.combo_format.addItems(["Unspecified", "mp4", "mkv", "webm"])
+            if current_fmt not in ["Unspecified", "mp4", "mkv", "webm"]:
+                self.combo_format.setCurrentText("Unspecified")
+            else:
+                self.combo_format.setCurrentText(current_fmt)
+                
+        self.combo_format.blockSignals(False)
+        self.update_command_preview()
+
     def update_command_preview(self, *args):
         links = self.links_input.toPlainText().strip().split('\n')
         links = [l.strip() for l in links if l.strip()]
@@ -342,8 +363,13 @@ class DownloaderWidget(QWidget):
             cmd.append(f'-f "{q_format}"')
             
             out_fmt = self.combo_format.currentText()
-            if q_format != "bestaudio/best":
-                cmd.append(f"--merge-output-format {out_fmt}")
+            if "Audio Only" in q_text:
+                cmd.append("--extract-audio")
+                if out_fmt != "Unspecified":
+                    cmd.append(f"--audio-format {out_fmt}")
+            else:
+                if out_fmt != "Unspecified":
+                    cmd.append(f"--merge-output-format {out_fmt}")
         elif getattr(self, 'video_group', None) and not self.video_group.isChecked():
             cmd.append("--skip-download")
         

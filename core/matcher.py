@@ -26,12 +26,12 @@ def find_all_sequences(target_words, srt_words):
             matches.append(i)
     return matches
 
-def find_precise_clip_boundaries(segment_text, parsed_subtitles):
-    if not parsed_subtitles or not segment_text.strip():
-        return 0.0, 5.0
-
-    # 1. Build a flattened list of EVERY WORD in the SRT
+def flatten_subtitles(parsed_subtitles):
+    """Flattens parsed subtitle blocks into a sequential list of cleaned words with timestamps."""
     srt_words = []
+    if not parsed_subtitles:
+        return srt_words
+        
     for block in parsed_subtitles:
         words = block['text'].split()
         for w in words:
@@ -42,8 +42,10 @@ def find_precise_clip_boundaries(segment_text, parsed_subtitles):
                     'start': block['start'],
                     'end': block['end']
                 })
+    return srt_words
 
-    if not srt_words:
+def find_precise_clip_boundaries(segment_text, srt_words):
+    if not srt_words or not segment_text.strip():
         return 0.0, 5.0
 
     # 2. Clean the user's pasted segment into a list of words

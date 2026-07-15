@@ -12,7 +12,7 @@ from core.parser import parse_script, parse_script_with_spans
 from ui.settings_modal import SettingsModal
 from utils.file_manager import load_settings, parse_subtitle_file
 from ui.timeline_widget import TimelineWidget
-from core.matcher import find_precise_clip_boundaries
+from core.matcher import find_precise_clip_boundaries, flatten_subtitles
 from core.media_engine import generate_waveform_data, has_video_stream
 from core.exporter import export_clip 
 from ui.downloader_widget import DownloaderWidget
@@ -58,6 +58,7 @@ class MainWindow(QMainWindow):
         
         self.current_video_path = None
         self.current_subtitles = []
+        self.cached_srt_words = []
         
         # --- NEW: Memory Cache for Clip Edits ---
         self.clip_bounds_cache = {}
@@ -196,11 +197,15 @@ class MainWindow(QMainWindow):
         control_layout = QHBoxLayout()
         self.fit_btn = QPushButton("↔️ Fit to Screen")
         self.focus_btn = QPushButton("🔍 Focus on Clip") 
+        self.focus_playhead_btn = QPushButton("🎯 Focus on Playhead")
+        
         self.fit_btn.clicked.connect(self.timeline_view.fit_to_screen)
         self.focus_btn.clicked.connect(self.timeline_view.focus_on_clip) 
+        self.focus_playhead_btn.clicked.connect(self.timeline_view.focus_on_playhead)
         
         control_layout.addWidget(self.fit_btn)
         control_layout.addWidget(self.focus_btn) 
+        control_layout.addWidget(self.focus_playhead_btn)
         control_layout.addStretch()
         right_layout.addLayout(control_layout)
 
@@ -371,7 +376,7 @@ class MainWindow(QMainWindow):
                     bounds = old_text_to_bounds[full_clean_text].pop(0)
                     start_time, end_time = bounds["start"], bounds["end"]
                 else:
-                    start_time, end_time = find_precise_clip_boundaries(full_clean_text, self.current_subtitles)
+                    start_time, end_time = find_precise_clip_boundaries(full_clean_text, self.cached_srt_words)
                 
                 # Pre-populate the cache so load_clip_to_timeline doesn't have to guess
                 clip_id = f"script_{i}"
@@ -508,6 +513,7 @@ class MainWindow(QMainWindow):
         if not sub_path: return
         
         self.current_subtitles = parse_subtitle_file(sub_path)
+        self.cached_srt_words = flatten_subtitles(self.current_subtitles)
         file_name = os.path.basename(sub_path)
         display_name = file_name if len(file_name) <= 15 else file_name[:12] + "..."
         full_status = f"✅ Subtitles: {file_name}"

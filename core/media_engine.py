@@ -1,7 +1,7 @@
 import subprocess
 import wave
 import os
-import struct
+import array
 from utils.binary_resolver import get_ffmpeg_path, get_ffprobe_path
 
 def has_video_stream(file_path):
@@ -33,7 +33,7 @@ def generate_waveform_data(video_path, num_peaks=5000):
         get_ffmpeg_path(), "-y", "-i", video_path, 
         "-vn",          # No video
         "-ac", "1",     # Mono channel
-        "-ar", "8000",  # Low sample rate (faster processing)
+        "-ar", "4000",  # Lower sample rate for even faster processing
         temp_wav
     ]
     
@@ -53,9 +53,8 @@ def generate_waveform_data(video_path, num_peaks=5000):
             # Read the raw audio bytes
             raw_data = wav_file.readframes(n_frames)
             
-            # Convert bytes to integers
-            unpack_fmt = f"<{n_frames}h" # 16-bit PCM
-            audio_samples = struct.unpack(unpack_fmt, raw_data)
+            # Use 'array' for zero-copy, highly efficient memory parsing of C-types
+            audio_samples = array.array('h', raw_data)
             
             # Calculate the maximum volume in each chunk
             for i in range(num_peaks):

@@ -6,13 +6,8 @@ import pyqtgraph as pg
 
 class MacSmoothPlotWidget(pg.PlotWidget):
     def wheelEvent(self, ev):
-        import platform
-        if platform.system() == "Darwin":
-            # Trackpads on Mac send very high-resolution scroll events that cause chaotic zooming in pyqtgraph.
-            # We ignore wheel events to prevent this. Users can use 'Fit to Screen' and 'Focus on Clip' buttons.
-            ev.ignore()
-        else:
-            super().wheelEvent(ev)
+        # Allow default zooming behavior so mouse scroll works
+        super().wheelEvent(ev)
 
 class PlayheadLine(pg.InfiniteLine):
     def hoverEvent(self, ev):
@@ -189,6 +184,11 @@ class TimelineWidget(QWidget):
         end = self.end_line.value()
         padding = (end - start) * 0.2  
         self.plot.setXRange(max(0, start - padding), min(self.total_duration, end + padding))
+
+    def focus_on_playhead(self):
+        playhead_time = self.playhead.value()
+        padding = 2.0 # 2 seconds before and after
+        self.plot.setXRange(max(0, playhead_time - padding), min(self.total_duration, playhead_time + padding))
 
     def fit_to_screen(self):
         if self.total_duration > 0:

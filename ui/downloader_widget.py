@@ -17,14 +17,22 @@ class DownloaderWidget(QWidget):
         self.load_settings()
         self._is_loading = False
         
+        self.show_only_terminal(True)
+        self.run_btn.setEnabled(False)
+        self.term_output.append(">>> Checking for yt-dlp updates...\n")
+        
         # Delay the version check slightly so the UI can load first
         QTimer.singleShot(1000, self.check_for_updates)
+
+    def show_only_terminal(self, show: bool):
+        self.top_splitter.setVisible(not show)
+        self.cmd_preview.setVisible(not show)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
         
         # --- Top Section: Links and Settings ---
-        top_splitter = QSplitter(Qt.Horizontal)
+        self.top_splitter = QSplitter(Qt.Horizontal)
         
         # Left: Links Input
         links_group = QGroupBox("YouTube Links (One per line)")
@@ -33,7 +41,7 @@ class DownloaderWidget(QWidget):
         self.links_input.setPlaceholderText("https://www.youtube.com/watch?v=...\nhttps://www.youtube.com/playlist?list=...")
         self.links_input.textChanged.connect(self.update_command_preview)
         links_layout.addWidget(self.links_input)
-        top_splitter.addWidget(links_group)
+        self.top_splitter.addWidget(links_group)
         
         # Right: Settings
         settings_group = QGroupBox("Settings")
@@ -159,10 +167,10 @@ class DownloaderWidget(QWidget):
         
         settings_layout.addStretch()
         
-        top_splitter.addWidget(settings_group)
-        top_splitter.setSizes([400, 450])
+        self.top_splitter.addWidget(settings_group)
+        self.top_splitter.setSizes([400, 450])
         
-        main_layout.addWidget(top_splitter, stretch=2)
+        main_layout.addWidget(self.top_splitter, stretch=2)
         
         # --- Middle Section: Command Preview ---
         cmd_group = QGroupBox("Final Command (Editable)")
@@ -285,15 +293,10 @@ class DownloaderWidget(QWidget):
         local_v = get_local_yt_dlp_version()
         latest_v = get_latest_yt_dlp_version()
         
+        needs_update = False
         if not local_v:
-            reply = QMessageBox.question(self, "yt-dlp Missing", 
-                                         "yt-dlp does not seem to be installed or found in PATH. Install it now via pip?",
-                                         QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.run_pip_update()
-            return
-
-        if latest_v:
+            needs_update = True
+        elif latest_v:
             def norm_ver(v):
                 # Converts '2026.07.04' to '2026.7.4' to match PyPI
                 try:
@@ -302,18 +305,30 @@ class DownloaderWidget(QWidget):
                     return v
 
             if norm_ver(local_v) != norm_ver(latest_v):
-                reply = QMessageBox.question(self, "yt-dlp Update Available",
-                                             f"Your yt-dlp version is {local_v}.\nA new version ({latest_v}) is available.\nUpdate now?",
-                                             QMessageBox.Yes | QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    self.run_pip_update()
+                needs_update = True
+                
+        if needs_update:
+            self.run_pip_update()
+        else:
+            self.term_output.append(">>> yt-dlp is up to date.\n")
+            self.show_only_terminal(False)
+            self.run_btn.setEnabled(True)
 
     def run_pip_update(self):
-        self.term_output.append(">>> Updating yt-dlp via pip...\n")
+        self.show_only_terminal(True)
+        self.run_btn.setEnabled(False)
+        self.stop_btn.setEnabled(False)
+        self.term_output.append(">>> Installing/Updating yt-dlp via pip...\n")
         self.process = QProcess()
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
         self.process.readyReadStandardError.connect(self.handle_stderr)
+        self.process.finished.connect(self.on_update_finished)
         self.process.start("pip", ["install", "-U", "yt-dlp"])
+
+    def on_update_finished(self, exit_code, exit_status):
+        self.term_output.append(">>> Update finished.\n")
+        self.show_only_terminal(False)
+        self.run_btn.setEnabled(True)
 
     def on_quality_changed(self):
         q_text = self.combo_quality.currentText()
@@ -430,6 +445,7 @@ class DownloaderWidget(QWidget):
             
         self.run_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
+        self.show_only_terminal(True)
 
     def handle_stdout(self):
         data = self.process.readAllStandardOutput().data().decode('utf-8', errors='replace')
@@ -447,6 +463,7 @@ class DownloaderWidget(QWidget):
             self.process.terminate()
 
     def on_download_finished(self, exit_code, exit_status):
+        self.show_only_terminal(False)
         self.run_btn.setEnabled(True)
         if hasattr(self, 'stop_btn'):
             self.stop_btn.setEnabled(False)

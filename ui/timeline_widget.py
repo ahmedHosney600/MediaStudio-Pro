@@ -100,6 +100,9 @@ class TimelineWidget(QWidget):
         self.plot.addItem(self.end_line)
         self.plot.addItem(self.playhead)
         
+        self.start_line.hide()
+        self.end_line.hide()
+        
         self.start_line.sigPositionChanged.connect(self.enforce_bounds)
         self.end_line.sigPositionChanged.connect(self.enforce_bounds)
         
@@ -112,7 +115,7 @@ class TimelineWidget(QWidget):
         self.total_duration = 0.1
 
     def on_mouse_click(self, event):
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.LeftButton:
             pos = event.scenePos()
             if self.plot.sceneBoundingRect().contains(pos):
                 mouse_point = self.plot.plotItem.vb.mapSceneToView(pos)
@@ -133,6 +136,13 @@ class TimelineWidget(QWidget):
                 
         # Emit the new bounds every time you finish dragging!
         self.bounds_changed.emit(start_val, end_val)
+        
+    def set_duration(self, duration):
+        """Sets the timeline boundaries before the waveform is loaded."""
+        if duration > 0:
+            self.total_duration = duration
+            self.plot.setXRange(0, duration)
+            self.plot.setLimits(xMin=0, xMax=duration)
 
     def set_waveform(self, peaks, total_duration):
         self.total_duration = total_duration
@@ -169,6 +179,9 @@ class TimelineWidget(QWidget):
     def set_clip_bounds(self, start, end):
         self.start_line.sigPositionChanged.disconnect(self.enforce_bounds)
         self.end_line.sigPositionChanged.disconnect(self.enforce_bounds)
+        
+        self.start_line.show()
+        self.end_line.show()
         
         self.start_line.setValue(start)
         self.end_line.setValue(end)

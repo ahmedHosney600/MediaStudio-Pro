@@ -13,7 +13,7 @@ from ui.settings_modal import SettingsModal
 from utils.file_manager import load_settings, parse_subtitle_file
 from ui.timeline_widget import TimelineWidget
 from core.matcher import find_precise_clip_boundaries, flatten_subtitles
-from core.media_engine import generate_waveform_data, has_video_stream
+from core.media_engine import generate_waveform_data, has_video_stream, get_video_duration
 from core.exporter import export_clip 
 from ui.downloader_widget import DownloaderWidget
 from ui.mpv_widget import MpvWidget
@@ -491,6 +491,10 @@ class MainWindow(QMainWindow):
         self.current_video_path = video_path
         self.video_widget.load(video_path)
         
+        # Immediately set timeline duration so it looks correct before waveform loads
+        duration = get_video_duration(video_path)
+        self.timeline_view.set_duration(duration)
+        
         # Clear cache in case they loaded a new video with existing clips
         self.clip_bounds_cache.clear()
         
@@ -829,3 +833,12 @@ class MainWindow(QMainWindow):
             from ui.batch_export_modal import BatchExportModal
             modal = BatchExportModal(self, format_type)
             modal.exec()
+
+    def mousePressEvent(self, event):
+        """Clear focus from text inputs when clicking outside them to restore shortcuts."""
+        focused_widget = QApplication.focusWidget()
+        from PySide6.QtWidgets import QTextEdit, QLineEdit, QPlainTextEdit
+        if isinstance(focused_widget, (QTextEdit, QLineEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+            self.setFocus()
+        super().mousePressEvent(event)

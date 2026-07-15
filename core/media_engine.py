@@ -21,6 +21,22 @@ def has_video_stream(file_path):
     except:
         return False
 
+def get_video_duration(file_path):
+    """
+    Quickly gets the total duration of the media file in seconds using ffprobe.
+    """
+    cmd = [
+        get_ffprobe_path(), "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        file_path
+    ]
+    try:
+        out = subprocess.check_output(cmd, text=True).strip()
+        return float(out)
+    except:
+        return 0.1
+
 def generate_waveform_data(video_path, num_peaks=5000):
     """
     Extracts audio from video using FFmpeg, reads the volume peaks,

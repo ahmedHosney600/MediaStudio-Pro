@@ -6,8 +6,6 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QApplication, QLineEdit, QPlainTextEdit)
 from PySide6.QtCore import Qt, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QKeySequence, QShortcut, QColor, QTextCharFormat, QTextCursor
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCore import QEvent, QObject
 
 from core.parser import parse_script, parse_script_with_spans
@@ -18,28 +16,25 @@ from core.matcher import find_precise_clip_boundaries
 from core.media_engine import generate_waveform_data, has_video_stream
 from core.exporter import export_clip 
 from ui.downloader_widget import DownloaderWidget
+from ui.mpv_widget import MpvWidget
 
 class TextEditorShortcutFilter(QObject):
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.ShortcutOverride:
-            from PySide6.QtWidgets import QTextEdit, QLineEdit, QPlainTextEdit
-            # Some widgets have inner viewports that receive the event
-            target = obj
-            if hasattr(obj, 'parent') and obj.parent() is not None and isinstance(obj.parent(), (QTextEdit, QPlainTextEdit)):
-                target = obj.parent()
-                
-            if isinstance(target, (QTextEdit, QLineEdit, QPlainTextEdit)):
-                event.accept()
-                return True
+        try:
+            if event.type() == QEvent.ShortcutOverride:
+                from PySide6.QtWidgets import QTextEdit, QLineEdit, QPlainTextEdit
+                # Some widgets have inner viewports that receive the event
+                target = obj
+                if hasattr(obj, 'parent') and obj.parent() is not None and isinstance(obj.parent(), (QTextEdit, QPlainTextEdit)):
+                    target = obj.parent()
+                    
+                if isinstance(target, (QTextEdit, QLineEdit, QPlainTextEdit)):
+                    event.accept()
+                    return True
+        except Exception:
+            pass
         return False
 
-# --- NEW: Custom Video Widget that detects Right-Clicks ---
-class ClickableVideoWidget(QVideoWidget):
-    rightClicked = Signal()
-    def mousePressEvent(self, event):
-        if event.button() == Qt.RightButton:
-            self.rightClicked.emit()
-        super().mousePressEvent(event)
 
 class WaveformWorker(QThread):
     finished = Signal(list) 
@@ -185,10 +180,9 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 1. ACTUAL VIDEO PLAYER (Now Clickable!)
-        self.video_widget = ClickableVideoWidget()
-        self.video_widget.setStyleSheet("background-color: #000000;")
-        self.video_widget.rightClicked.connect(self.stop_playback) # Hook up the stop function!
+        # 1. ACTUAL VIDEO PLAYER (mpv embedded)
+        self.video_widget = MpvWidget()
+        self.video_widget.rightClicked.connect(self.stop_playback)
         right_layout.addWidget(self.video_widget, stretch=2)
         
         self.status_label = QLabel("Waiting for media...")
@@ -217,13 +211,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right_panel)
         splitter.setSizes([360, 840])
         
-        # --- TRUE AUDIO PLAYBACK ENGINE ---
-        self.audio_output = QAudioOutput(self)
-        self.media_player = QMediaPlayer(self)
-        self.media_player.setAudioOutput(self.audio_output)
-        self.media_player.setVideoOutput(self.video_widget) 
-        self.audio_output.setVolume(1.0)
-        
+        # --- PLAYBACK SYNC TIMER ---
         self.sync_timer = QTimer(self)
         self.sync_timer.setTimerType(Qt.PreciseTimer)
         self.sync_timer.timeout.connect(self.sync_playhead_to_audio)
@@ -496,7 +484,7 @@ class MainWindow(QMainWindow):
         if not video_path: return
 
         self.current_video_path = video_path
-        self.media_player.setSource(QUrl.fromLocalFile(video_path))
+        self.video_widget.load(video_path)
         
         # Clear cache in case they loaded a new video with existing clips
         self.clip_bounds_cache.clear()
@@ -610,11 +598,11 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence(QKeySequence.StandardKey.Redo), self).activated.connect(self.redo_edit)
 
     def force_audio_jump(self, time_sec):
-        self.media_player.setPosition(int(time_sec * 1000))
+        self.video_widget.seek(time_sec)
 
     def sync_playhead_to_audio(self):
-        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            current_sec = self.media_player.position() / 1000.0
+        if self.video_widget.is_playing:
+            current_sec = self.video_widget.position
             self.timeline_view.playhead.setValue(current_sec)
             
             if self.preview_mode and current_sec >= self.timeline_view.end_line.value():
@@ -624,14 +612,14 @@ class MainWindow(QMainWindow):
     def play_forward(self):
         if hasattr(self, 'backward_timer'):
             self.backward_timer.stop()
-        current_ms = int(self.timeline_view.playhead.value() * 1000)
-        self.media_player.setPosition(current_ms)
-        self.media_player.setPlaybackRate(1.0)
-        self.media_player.play()
+        current_sec = self.timeline_view.playhead.value()
+        self.video_widget.seek(current_sec)
+        self.video_widget.set_playback_rate(1.0)
+        self.video_widget.play()
         self.sync_timer.start(33) 
 
     def play_backward(self):
-        self.media_player.pause()
+        self.video_widget.pause()
         self.sync_timer.stop()
         if not hasattr(self, 'backward_timer'):
             self.backward_timer = QTimer(self)
@@ -640,20 +628,20 @@ class MainWindow(QMainWindow):
         self.backward_timer.start()
 
     def step_backward(self):
-        current_ms = int(self.timeline_view.playhead.value() * 1000)
-        new_ms = max(0, current_ms - 100)
-        self.media_player.setPosition(new_ms)
-        self.timeline_view.playhead.setValue(new_ms / 1000.0)
-        if new_ms == 0:
+        current_sec = self.timeline_view.playhead.value()
+        new_sec = max(0, current_sec - 0.1)
+        self.video_widget.seek(new_sec)
+        self.timeline_view.playhead.setValue(new_sec)
+        if new_sec == 0:
             self.backward_timer.stop()
 
     def stop_playback(self):
         self.preview_mode = False
-        self.media_player.pause()
+        self.video_widget.pause()
         self.sync_timer.stop()
         if hasattr(self, 'backward_timer'):
             self.backward_timer.stop()
-        self.media_player.setPosition(int(self.timeline_view.playhead.value() * 1000))
+        self.video_widget.seek(self.timeline_view.playhead.value())
 
     def snap_playhead_to_start(self):
         self.stop_playback()

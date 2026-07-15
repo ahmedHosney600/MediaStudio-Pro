@@ -30,10 +30,12 @@ class MpvWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setStyleSheet("background-color: #000000;")
+        self._update_pending = False
         
         self._player = mpv.MPV(
             vo='libmpv',
-            hwdec='auto',             # Hardware decoding (VideoToolbox on macOS)
+            hwdec='videotoolbox-copy',  # Hardware decoding with safe copy to RAM. Prevents CPU thermal throttling on macOS (which degrades performance over time) and avoids OpenGL interop bugs.
+            profile='fast',           
             keep_open='yes',
             idle='yes',
             input_default_bindings=False,
@@ -41,6 +43,15 @@ class MpvWidget(QOpenGLWidget):
             osc=False,
             osd_level=0,
         )
+        
+        self._current_position = 0.0
+        
+        @self._player.property_observer('time-pos')
+        def on_time_pos(_name, value):
+            if value is not None:
+                self._current_position = value
+        self._time_observer = on_time_pos
+        
         
         self._ctx = None
         self._is_loaded = False
@@ -91,10 +102,13 @@ class MpvWidget(QOpenGLWidget):
 
     def _on_mpv_update(self):
         """Called by mpv (from a background thread) when a new frame is ready."""
-        self._frame_ready.emit()
+        if not self._update_pending:
+            self._update_pending = True
+            self._frame_ready.emit()
 
     def paintGL(self):
         """Render the current mpv frame into our OpenGL framebuffer."""
+        self._update_pending = False
         if self._ctx is None:
             return
         
@@ -158,11 +172,7 @@ class MpvWidget(QOpenGLWidget):
         """Current playback position in seconds."""
         if not self._is_loaded:
             return 0.0
-        try:
-            pos = self._player.time_pos
-            return pos if pos is not None else 0.0
-        except Exception:
-            return 0.0
+        return self._current_position
 
     @property
     def is_playing(self):

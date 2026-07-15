@@ -15,6 +15,7 @@ def main():
     fmt.setProfile(QSurfaceFormat.CoreProfile)
     fmt.setDepthBufferSize(24)
     fmt.setStencilBufferSize(8)
+    fmt.setSwapInterval(0) # Disable vsync so Qt doesn't block mpv's render loop
     QSurfaceFormat.setDefaultFormat(fmt)
     
     # 1. Create the Qt Application

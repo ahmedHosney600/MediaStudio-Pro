@@ -2,8 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import Qt, Signal
 import pyqtgraph as pg
 
-# Enable anti-aliasing globally for crisp waveform rendering on high-DPI displays (Mac Retina)
-pg.setConfigOptions(antialias=True)
+import pyqtgraph as pg
 
 class MacSmoothPlotWidget(pg.PlotWidget):
     def wheelEvent(self, ev):
@@ -152,12 +151,19 @@ class TimelineWidget(QWidget):
         time_steps = [i * (total_duration / len(peaks)) for i in range(len(peaks))]
         neg_peaks = [-p for p in peaks] 
         
-        wave_pen = pg.mkPen('#777777', width=1.5)
-        self.waveform_top = self.plot.plot(x=time_steps, y=peaks, pen=wave_pen)
-        self.waveform_bottom = self.plot.plot(x=time_steps, y=neg_peaks, pen=wave_pen)
+        wave_pen = pg.mkPen('#777777', width=1.0)
+        wave_brush = pg.mkBrush(130, 130, 130, 200)
         
-        self.waveform_fill = pg.FillBetweenItem(self.waveform_bottom, self.waveform_top, brush=pg.mkBrush(130, 130, 130, 200))
-        self.plot.addItem(self.waveform_fill)
+        # Use fillLevel=0 instead of FillBetweenItem for vastly superior performance.
+        # autoDownsample prevents drawing millions of off-screen points.
+        self.waveform_top = self.plot.plot(
+            x=time_steps, y=peaks, pen=wave_pen, 
+            fillLevel=0, fillBrush=wave_brush, autoDownsample=True
+        )
+        self.waveform_bottom = self.plot.plot(
+            x=time_steps, y=neg_peaks, pen=wave_pen, 
+            fillLevel=0, fillBrush=wave_brush, autoDownsample=True
+        )
         
         self.plot.setYRange(-1.0, 1.2) 
         self.plot.setLimits(xMin=0, xMax=total_duration, yMin=-1.0, yMax=1.2)
